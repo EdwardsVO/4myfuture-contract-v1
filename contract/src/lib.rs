@@ -98,7 +98,7 @@ impl ForMyFuture {
 
 
     //Function to log an user into the app, if she/he don't exist will be created
-    pub fn loggin(&mut self) -> User {
+    pub fn login(&mut self) -> User {
         let signer  = env::signer_account_id().to_string();
         if self.users.get(&signer).is_none() {
             let user = User {
