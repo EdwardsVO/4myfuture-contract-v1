@@ -50,12 +50,12 @@ pub struct Proposal {
     funds: u128,
     title: String,
     description: String,
-    goal: String,
+    goal: u128,
     link_institution: String,
     link_pensum: String,
     init_date: String,
     finish_date: String,
-    photos: Vec<String>,
+    pics: Vec<String>,
     status: i128,
     index: i128
 }
@@ -97,6 +97,10 @@ impl Default for ForMyFuture {
 impl ForMyFuture {
 
 
+    /*******************************/
+    /******* USER FUNCTIONS  ********/
+    /*******************************/
+
     //Function to log an user into the app, if she/he don't exist will be created
     pub fn login(&mut self) -> User {
         let signer  = env::signer_account_id().to_string();
@@ -112,6 +116,70 @@ impl ForMyFuture {
         }
         let user_r = self.users.get(&signer);
         user_r.unwrap()
+    }
+
+    //Function to return all users registered in the contract
+    pub fn get_users(self) -> Vec<User> {
+        let user_list = self.users.values_as_vector().to_vec();
+        user_list
+    }
+
+    //Function to get one user registered
+    pub fn get_user(self, user_id: AccountId) -> User {
+        assert!(self.users.get(&user_id).is_some(), "User not registered");
+        let user = self.users.get(&user_id);
+        user.unwrap()
+    }
+
+
+    /*******************************/
+    /******* PROPOSAL FUNCTIONS  ********/
+    /*******************************/    
+
+    //Function to create one proposal
+    pub fn create_proposal(&mut self, 
+        title: String, 
+        goal: u128,
+        link_institution: String,
+        link_pensum: String,
+        pics: Vec<String>,
+        amount_needed: u128,
+        description: String, 
+        init_date: String, 
+        finish_date: String) -> Proposal {
+            let user_requesting = env::signer_account_id().to_string();
+            assert!(amount_needed > 0, "Invalid amount needed");
+            assert!(self.users.get(&user_requesting).is_some(), "User not loged");
+            let proposal = Proposal {
+                title: title.to_string(),
+                user: user_requesting,
+                status: i128::from(0),
+                goal: goal,
+                link_institution: link_institution.to_string(),
+                link_pensum: link_pensum.to_string(),
+                pics: pics,
+                amount_needed: amount_needed,
+                description: description,
+                init_date: init_date,
+                finish_date: finish_date,
+                funds: 0,
+                index: i128::from(self.users.len() + 1) 
+            };
+            self.proposals.insert(&proposal.index, &proposal);
+            proposal
+    }
+
+    //Get one proposal
+    pub fn get_proposal(self, proposal_id: i128) -> Proposal {
+        assert!(proposal_id <= i128::from(self.proposals.len()), "Invalid proposal id");
+        let proposal = self.proposals.get(&proposal_id);
+        proposal.unwrap()
+    }
+
+    //Get all proposals
+    pub fn get_proposals(self) -> Vec<Proposal> {
+        let proposal_list = self.proposals.values_as_vector().to_vec();
+        proposal_list
     }
 
 
