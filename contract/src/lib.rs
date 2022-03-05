@@ -132,6 +132,7 @@ impl ForMyFuture {
     }
 
 
+
     /*******************************/
     /******* PROPOSAL FUNCTIONS  ********/
     /*******************************/    
@@ -148,8 +149,11 @@ impl ForMyFuture {
         init_date: String, 
         finish_date: String) -> Proposal {
             let user_requesting = env::signer_account_id().to_string();
-            assert!(amount_needed > 0, "Invalid amount needed");
+            assert!(amount_needed > (0), "Invalid amount needed");
             assert!(self.users.get(&user_requesting).is_some(), "User not loged");
+            let user = self.users.get(&user_requesting);
+            let mut user_update = user.unwrap();
+            let index = i128::from(self.proposals.len() + 1);
             let proposal = Proposal {
                 title: title.to_string(),
                 user: user_requesting,
@@ -163,15 +167,17 @@ impl ForMyFuture {
                 init_date: init_date,
                 finish_date: finish_date,
                 funds: 0,
-                index: i128::from(self.users.len() + 1) 
+                index: index, 
             };
+            user_update.with_active_proposal = true;
+            self.users.insert(&user_update.id, &user_update);
             self.proposals.insert(&proposal.index, &proposal);
             proposal
     }
 
     //Get one proposal
     pub fn get_proposal(self, proposal_id: i128) -> Proposal {
-        assert!(proposal_id <= i128::from(self.proposals.len()), "Invalid proposal id");
+        assert!(proposal_id <= i128::from(self.proposals.len() + 1), "Invalid proposal id");
         let proposal = self.proposals.get(&proposal_id);
         proposal.unwrap()
     }
@@ -182,7 +188,10 @@ impl ForMyFuture {
         proposal_list
     }
 
+
+
     /*******************************/
     /******* CONTRIBUTION FUNCTIONS  ********/
     /*******************************/    
+
 }
