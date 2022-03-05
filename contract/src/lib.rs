@@ -137,7 +137,7 @@ impl ForMyFuture {
     /*******************************/    
 
     //Function to create one proposal
-    pub fn create_ppsl(&mut self, 
+    pub fn create_proposal(&mut self, 
         title: String, 
         goal: u128,
         link_institution: String,
