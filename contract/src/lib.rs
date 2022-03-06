@@ -3,21 +3,30 @@ use near_sdk::serde::Serialize;
 use near_sdk::serde::Deserialize;
 use near_sdk::collections::UnorderedMap;
 use near_sdk::{json_types::U128, env, near_bindgen, AccountId, Balance, Promise};
+use std::time::{Duration, Instant};
 //use std::collections::HashMap;
 
 near_sdk::setup_alloc!();
 
 
+//--------------------------------- CONSTANTS --------------------------//
+const ONE_NEAR: Balance = 1000000000000000000000000;
+const BASE_TO_CONVERT: u64 = 1000000;
+const NANOSEC_SEC: u64 = 1000000000;
+const NANOSEC_MIN: u64 = 60000000000;
+const NANOSEC_HOR: u64 = 3600000000000;
+const NANOSEC_DIA: u64 = 86400000000000;
+
+
 //--------------------------------- APP OBJECTS --------------------------//
-#[derive(Serialize, Deserialize, BorshDeserialize, BorshSerialize)]
+#[derive(Serialize, Deserialize, BorshDeserialize, BorshSerialize, Clone)]
 #[serde(crate = "near_sdk::serde")]
 pub struct Contribution {
     contribution_id: i128,
     proposal_id: i128,
-    proposal_pic: String,
     amount: u128,
-    user_funded: String,
-    user_pic: String,
+    from: String,
+    by: String,
     date: String,
     comments: String 
 }
@@ -42,7 +51,7 @@ pub struct User {
     picture: String
 }
 
-#[derive(Serialize, Deserialize, BorshDeserialize, BorshSerialize)]
+#[derive(Serialize, Deserialize, BorshDeserialize, BorshSerialize, Clone)]
 #[serde(crate = "near_sdk::serde")]
 pub struct Proposal {
     user: String,
@@ -50,14 +59,15 @@ pub struct Proposal {
     funds: u128,
     title: String,
     description: String,
-    goal: u128,
+    goal: String,
     link_institution: String,
     link_pensum: String,
-    init_date: String,
-    finish_date: String,
+    init_date: u64,
+    finish_date: u64,
     pics: Vec<String>,
     status: i128,
-    index: i128
+    index: i128,
+    is_reclaimable: bool
 }
 //--------------------------------- APP OBJECTS --------------------------//
 
@@ -140,19 +150,20 @@ impl ForMyFuture {
     //Function to create one proposal
     pub fn create_proposal(&mut self, 
         title: String, 
-        goal: u128,
+        goal: String,
         link_institution: String,
         link_pensum: String,
         pics: Vec<String>,
         amount_needed: u128,
         description: String, 
-        init_date: String, 
-        finish_date: String) -> Proposal {
+        finish_date: u64) -> Proposal {
             let user_requesting = env::signer_account_id().to_string();
-            assert!(amount_needed > (0), "Invalid amount needed");
-            assert!(self.users.get(&user_requesting).is_some(), "User not loged");
             let user = self.users.get(&user_requesting);
             let mut user_update = user.unwrap();
+            assert!(amount_needed > (0), "Invalid amount needed");
+            assert!(self.users.get(&user_requesting).is_some(), "User not loged");
+            assert!(user_update.with_active_proposal == false, "User already have one proposal");
+            let amount_yocto = amount_needed * ONE_NEAR;
             let index = i128::from(self.proposals.len() + 1);
             let proposal = Proposal {
                 title: title.to_string(),
@@ -162,12 +173,13 @@ impl ForMyFuture {
                 link_institution: link_institution.to_string(),
                 link_pensum: link_pensum.to_string(),
                 pics: pics,
-                amount_needed: amount_needed,
+                amount_needed: amount_yocto,
                 description: description,
-                init_date: init_date,
+                init_date: env::block_timestamp(),
                 finish_date: finish_date,
                 funds: 0,
                 index: index, 
+                is_reclaimable: false
             };
             user_update.with_active_proposal = true;
             self.users.insert(&user_update.id, &user_update);
@@ -188,10 +200,58 @@ impl ForMyFuture {
         proposal_list
     }
 
+    //Get the current funds in realtion to the funds needed in percentage 
+    pub fn get_proposal_funds_percentage(self, proposal_id: i128) -> u128 {
+        assert!(proposal_id <= i128::from(self.proposals.len() + 1), "Invalid proposal id");
+        let proposal = self.proposals.get(&proposal_id).unwrap();
+        let percentage =  (proposal.funds*100)/proposal.amount_needed;
+        percentage
+    }
+
 
 
     /*******************************/
     /******* CONTRIBUTION FUNCTIONS  ********/
     /*******************************/    
+    
+
+    #[payable]
+    pub fn contribute(&mut self, proposal_id: i128, comments: String) -> Contribution{
+        assert!(proposal_id <= i128::from(self.proposals.len() + 1), "Invalid proposal id");
+        assert!(env::attached_deposit() > 0, "Invalid contribution amount");
+        let mut proposal = self.proposals.get(&proposal_id).unwrap();
+        assert!(env::attached_deposit() <= proposal.amount_needed, "Contribution higher than required");
+        assert!(proposal.status == 0, "Can't contribute to this proposal");
+        let percentage =  (proposal.funds*100)/proposal.amount_needed;
+        assert!(percentage <= 100, "The contribution exceeded the proposal goal");
+        assert!(env::block_timestamp() < u64::from(proposal.finish_date), "Proposal already ended");
+        if self.users.get(&env::signer_account_id().to_string()).is_none() {
+            let _user_just_registered = self.login();
+        }
+        let mut user = self.users.get(&env::signer_account_id()).unwrap();
+        let index = i128::from(self.contributions.len() + 1);
+        let contribution = Contribution {
+            contribution_id: index,
+            proposal_id: proposal.index,
+            amount: env::attached_deposit(),
+            from: env::signer_account_id(),
+            by: proposal.clone().user,
+            date: env::block_timestamp().to_string(),
+            comments: comments 
+        };
+        self.contributions.insert(&i128::from(self.contributions.len()+1), &contribution);
+        proposal.funds += env::attached_deposit();
+        let new_percentage = (proposal.funds*100)/proposal.amount_needed;
+        if new_percentage >= 75 {
+            proposal.is_reclaimable = true;
+        }
+        user.contributions.push(contribution.clone());
+        self.proposals.insert(&proposal.index, &proposal);
+        self.users.insert(&user.id, &user);
+        return contribution;
+      
+        
+
+    }
 
 }
