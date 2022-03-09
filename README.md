@@ -1,6 +1,7 @@
 Rust-4MyFuture
 ==================
 
+Rust Contract 4MyFutureDApp
 This app was initialized with [create-near-app]
 
 
