@@ -8,6 +8,7 @@
 
 /contract/out
 /contract/target
+/contract/neardev
 
 #keys
 /neardev

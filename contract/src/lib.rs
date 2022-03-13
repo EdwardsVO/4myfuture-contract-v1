@@ -25,7 +25,7 @@ pub struct Contribution {
     contribution_id: i128,
     proposal_id: i128,
     amount: u128,
-    from: String,
+    to: String,
     by: String,
     date: String,
     comments: String 
@@ -194,6 +194,16 @@ impl ForMyFuture {
         proposal.unwrap()
     }
 
+    //Inactive Proposal 
+    pub fn pause_proposal(&mut self, proposal_id: i128) -> Proposal {
+        assert!(proposal_id <= i128::from(self.proposals.len() + 1), "Invalid proposal id");
+        assert!(env::signer_account_id() == "4myfuture.sputnikv2.testnet".to_string(), "Signer unauthorized to call this function");
+        let mut proposal = self.proposals.get(&proposal_id).unwrap();
+        proposal.status = 2;
+        self.proposals.insert(&proposal_id, &proposal);
+        proposal
+    }
+
     //Get all proposals
     pub fn get_proposals(self) -> Vec<Proposal> {
         let proposal_list = self.proposals.values_as_vector().to_vec();
@@ -207,8 +217,6 @@ impl ForMyFuture {
         let percentage =  (proposal.funds*100)/proposal.amount_needed;
         percentage
     }
-
-
 
     /*******************************/
     /******* CONTRIBUTION FUNCTIONS  ********/
@@ -225,7 +233,8 @@ impl ForMyFuture {
         let percentage =  (proposal.funds*100)/proposal.amount_needed;
         assert!(percentage <= 100, "The contribution exceeded the proposal goal");
         assert!(env::block_timestamp() < u64::from(proposal.finish_date), "Proposal already ended");
-        if self.users.get(&env::signer_account_id().to_string()).is_none() {
+        if self.users.get(&env::signer_account_id().to_string()).is_none() { //FIXME
+            env::log(b"USUARIO NO REGISTRADO");
             let _user_just_registered = self.login();
         }
         let mut user = self.users.get(&env::signer_account_id()).unwrap();
@@ -234,8 +243,8 @@ impl ForMyFuture {
             contribution_id: index,
             proposal_id: proposal.index,
             amount: env::attached_deposit(),
-            from: env::signer_account_id(),
-            by: proposal.clone().user,
+            by: env::signer_account_id(),
+            to: proposal.clone().user,
             date: env::block_timestamp().to_string(),
             comments: comments 
         };
@@ -249,9 +258,31 @@ impl ForMyFuture {
         self.proposals.insert(&proposal.index, &proposal);
         self.users.insert(&user.id, &user);
         return contribution;
-      
-        
-
     }
+
+    pub fn reclaim_funds(&mut self, proposal_id: i128) -> Proposal {
+        assert!(proposal_id <= i128::from(self.proposals.len() + 1), "Invalid proposal id");
+        let mut proposal = self.proposals.get(&proposal_id).unwrap();
+        assert!(env::signer_account_id() == proposal.user, "Only owner can reclaim funds");
+        assert!(proposal.status == 0, "Can't reclaim funds for this proposal");    
+        //let percentage = &self.get_proposal_funds_percentage(proposal_id);     
+        let percentage = (proposal.funds*100)/proposal.amount_needed;
+        assert!(percentage > 75, "You can't reclaim your funds yet");
+        //assert in finish time
+        let owner_id = &proposal.user;
+        let mut owner = self.users.get(&owner_id).unwrap();
+        Promise::new(owner_id.clone()).transfer(proposal.funds);
+        proposal.status = 1;
+        owner.with_active_proposal = false;
+        self.proposals.insert(&proposal.index, &proposal);
+        self.users.insert(&owner_id, &owner);
+        proposal
+    }
+
+    /*******************************/
+    /******* CONTRIBUTION FUNCTIONS  ********/
+    /*******************************/    
+    
+
 
 }
