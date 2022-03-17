@@ -141,6 +141,28 @@ impl ForMyFuture {
         user.unwrap()
     }
 
+    pub fn get_user_contributions(self, user_id: AccountId) -> Vec<Contribution> {
+        let mut user_contributions:Vec<Contribution> = Vec::new();
+
+        let contributions_vec = self.contributions.values_as_vector().to_vec();
+
+        for i in 0..contributions_vec.len(){
+            if contributions_vec[i].by == user_id.to_string() {
+                user_contributions.push(Contribution {
+                    contribution_id: contributions_vec[i].contribution_id,
+                    proposal_id: contributions_vec[i].proposal_id,
+                    amount: contributions_vec[i].amount,
+                    to: contributions_vec[i].to.to_string(),
+                    by: contributions_vec[i].by.to_string(),
+                    date: contributions_vec[i].date.to_string(),
+                    comments: contributions_vec[i].comments.to_string()   
+                })
+            }
+        }
+        user_contributions
+
+    }
+
 
 
     /*******************************/
