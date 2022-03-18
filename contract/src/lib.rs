@@ -2,9 +2,7 @@ use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::serde::Serialize;
 use near_sdk::serde::Deserialize;
 use near_sdk::collections::UnorderedMap;
-use near_sdk::{json_types::U128, env, near_bindgen, AccountId, Balance, Promise};
-use std::time::{Duration, Instant};
-//use std::collections::HashMap;
+use near_sdk::{ env, near_bindgen, AccountId, Balance, Promise};
 
 near_sdk::setup_alloc!();
 
@@ -27,7 +25,7 @@ pub struct Contribution {
     amount: u128,
     to: String,
     by: String,
-    date: String,
+    date: u64,
     comments: String 
 }
 
@@ -37,7 +35,7 @@ pub struct Payment {
     to: String,
     by: String,
     amount: u128,
-    date: String,
+    date: u64,
     pay_type: String
 }
 
@@ -82,10 +80,10 @@ pub struct ForMyFuture {
     pub proposals: UnorderedMap<i128, Proposal>,
 
     //Contributions made it
-    pub contributions: UnorderedMap<i128, Contribution>,
+    pub contributions: Vec<Contribution>,
 
     //Payments within the contract
-    pub payments: UnorderedMap<i128, Payment>
+    pub payments: Vec<Payment>
 }
 //--------------------------------- CONTRACT STORAGE --------------------------//
 
@@ -95,8 +93,8 @@ impl Default for ForMyFuture {
         Self {
             users: UnorderedMap::new(b"a"),
             proposals: UnorderedMap::new(b"b"),
-            contributions: UnorderedMap::new(b"c"),
-            payments: UnorderedMap::new(b"p")            
+            contributions: Vec::new(),
+            payments: Vec::new()            
         }
     }
 }
@@ -144,18 +142,16 @@ impl ForMyFuture {
     pub fn get_user_contributions(self, user_id: AccountId) -> Vec<Contribution> {
         let mut user_contributions:Vec<Contribution> = Vec::new();
 
-        let contributions_vec = self.contributions.values_as_vector().to_vec();
-
-        for i in 0..contributions_vec.len(){
-            if contributions_vec[i].by == user_id.to_string() {
+        for i in 0..self.contributions.len(){
+            if self.contributions[i].by == user_id.to_string() {
                 user_contributions.push(Contribution {
-                    contribution_id: contributions_vec[i].contribution_id,
-                    proposal_id: contributions_vec[i].proposal_id,
-                    amount: contributions_vec[i].amount,
-                    to: contributions_vec[i].to.to_string(),
-                    by: contributions_vec[i].by.to_string(),
-                    date: contributions_vec[i].date.to_string(),
-                    comments: contributions_vec[i].comments.to_string()   
+                    contribution_id: self.contributions[i].contribution_id,
+                    proposal_id: self.contributions[i].proposal_id,
+                    amount: self.contributions[i].amount,
+                    to: self.contributions[i].to.to_string(),
+                    by: self.contributions[i].by.to_string(),
+                    date: self.contributions[i].date,
+                    comments: self.contributions[i].comments.to_string()   
                 })
             }
         }
@@ -178,7 +174,8 @@ impl ForMyFuture {
         pics: Vec<String>,
         amount_needed: u128,
         description: String, 
-        finish_date: u64) -> Proposal {
+        //finish_date: u64 //TESTING REFUND
+    ) -> Proposal {
             let user_requesting = env::signer_account_id().to_string();
             let user = self.users.get(&user_requesting);
             let mut user_update = user.unwrap();
@@ -198,7 +195,7 @@ impl ForMyFuture {
                 amount_needed: amount_yocto,
                 description: description,
                 init_date: env::block_timestamp(),
-                finish_date: finish_date,
+                finish_date: env::block_timestamp() + NANOSEC_MIN, //TESTING REFUND
                 funds: 0,
                 index: index, 
                 is_reclaimable: false
@@ -241,7 +238,7 @@ impl ForMyFuture {
     }
 
     /*******************************/
-    /******* CONTRIBUTION FUNCTIONS  ********/
+    /******* FUNDS FUNCTIONS  ********/
     /*******************************/    
     
 
@@ -260,17 +257,17 @@ impl ForMyFuture {
             let _user_just_registered = self.login();
         }
         let mut user = self.users.get(&env::signer_account_id()).unwrap();
-        let index = i128::from(self.contributions.len() + 1);
+        let index = self.contributions.len() as i128;
         let contribution = Contribution {
             contribution_id: index,
             proposal_id: proposal.index,
             amount: env::attached_deposit(),
             by: env::signer_account_id(),
             to: proposal.clone().user,
-            date: env::block_timestamp().to_string(),
+            date: env::block_timestamp(),
             comments: comments 
         };
-        self.contributions.insert(&i128::from(self.contributions.len()+1), &contribution);
+        self.contributions.push(contribution.clone());
         proposal.funds += env::attached_deposit();
         let new_percentage = (proposal.funds*100)/proposal.amount_needed;
         if new_percentage >= 75 {
@@ -294,6 +291,7 @@ impl ForMyFuture {
         let owner_id = &proposal.user;
         let mut owner = self.users.get(&owner_id).unwrap();
         Promise::new(owner_id.clone()).transfer(proposal.funds);
+        //CREATE PAYMENT
         proposal.status = 1;
         owner.with_active_proposal = false;
         self.proposals.insert(&proposal.index, &proposal);
@@ -301,10 +299,38 @@ impl ForMyFuture {
         proposal
     }
 
-    /*******************************/
-    /******* CONTRIBUTION FUNCTIONS  ********/
-    /*******************************/    
+    pub fn refund (&mut self, proposal_id: i128) -> Proposal {
+        assert!(proposal_id <= i128::from(self.proposals.len() + 1), "Invalid proposal id");
+        let mut proposal = self.proposals.get(&proposal_id).unwrap();
+        assert!(proposal.init_date >= proposal.finish_date, "Can't do refund in this proposal");
+        let mut proposal_contributions: Vec<Contribution> = Vec::new();
+
+        for i in (0..self.contributions.len()).filter(|&x| self.contributions[x].to == proposal.user) {
+            proposal_contributions.push(Contribution {
+                contribution_id: self.contributions[i].contribution_id,
+                amount: self.contributions[i].amount,
+                proposal_id: self.contributions[i].proposal_id,
+                by: self.contributions[i].by.to_string(),
+                to: self.contributions[i].to.to_string(),
+                comments: self.contributions[i].comments.to_string(), 
+                date: env::block_timestamp(),
+            })
+        }
+
+        for j in 0..proposal_contributions.len() {
+            self.payments.push(Payment {
+                to: proposal_contributions[j].to.to_string(),
+                amount: proposal_contributions[j].amount,
+                by: proposal_contributions[j].by.to_string(),
+                pay_type: String::from("refund"),
+                date: env::block_timestamp(),
+            });
+            Promise::new(proposal_contributions[j].by.clone()).transfer(proposal_contributions[j].amount);
+        }
+        proposal.status = 1;
+        self.proposals.insert(&proposal.index, &proposal);
+        
+        return proposal
+    }
     
-
-
 }
