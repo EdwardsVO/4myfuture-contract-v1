@@ -140,23 +140,8 @@ impl ForMyFuture {
     }
 
     pub fn get_user_contributions(self, user_id: AccountId) -> Vec<Contribution> {
-        let mut user_contributions:Vec<Contribution> = Vec::new();
-
-        for i in 0..self.contributions.len(){
-            if self.contributions[i].by == user_id.to_string() {
-                user_contributions.push(Contribution {
-                    contribution_id: self.contributions[i].contribution_id,
-                    proposal_id: self.contributions[i].proposal_id,
-                    amount: self.contributions[i].amount,
-                    to: self.contributions[i].to.to_string(),
-                    by: self.contributions[i].by.to_string(),
-                    date: self.contributions[i].date,
-                    comments: self.contributions[i].comments.to_string()   
-                })
-            }
-        }
-        user_contributions
-
+        assert!(self.users.get(&user_id).is_some(), "User not registered");
+        return self.users.get(&user_id).unwrap().contributions;
     }
 
 
@@ -247,6 +232,7 @@ impl ForMyFuture {
         assert!(proposal_id <= i128::from(self.proposals.len() + 1), "Invalid proposal id");
         assert!(env::attached_deposit() > 0, "Invalid contribution amount");
         let mut proposal = self.proposals.get(&proposal_id).unwrap();
+        assert!(env::block_timestamp() <= proposal.finish_date, "Proposal out of time");
         assert!(env::attached_deposit() <= proposal.amount_needed, "Contribution higher than required");
         assert!(proposal.status == 0, "Can't contribute to this proposal");
         let percentage =  (proposal.funds*100)/proposal.amount_needed;
@@ -291,7 +277,13 @@ impl ForMyFuture {
         let owner_id = &proposal.user;
         let mut owner = self.users.get(&owner_id).unwrap();
         Promise::new(owner_id.clone()).transfer(proposal.funds);
-        //CREATE PAYMENT
+        self.payments.push(Payment {
+            to: owner.id.to_string(),
+            amount: proposal.funds,
+            by: String::from("4MyFuture"),
+            pay_type: String::from("funding"),
+            date: env::block_timestamp(),
+        });
         proposal.status = 1;
         owner.with_active_proposal = false;
         self.proposals.insert(&proposal.index, &proposal);
@@ -302,7 +294,7 @@ impl ForMyFuture {
     pub fn refund (&mut self, proposal_id: i128) -> Proposal {
         assert!(proposal_id <= i128::from(self.proposals.len() + 1), "Invalid proposal id");
         let mut proposal = self.proposals.get(&proposal_id).unwrap();
-        assert!(proposal.init_date >= proposal.finish_date, "Can't do refund in this proposal");
+        assert!(env::block_timestamp() >= proposal.finish_date, "Can't refund, proposal didn't finish");
         let mut proposal_contributions: Vec<Contribution> = Vec::new();
 
         for i in (0..self.contributions.len()).filter(|&x| self.contributions[x].to == proposal.user) {
@@ -329,8 +321,19 @@ impl ForMyFuture {
         }
         proposal.status = 1;
         self.proposals.insert(&proposal.index, &proposal);
+        let mut user = self.users.get(&proposal.user).unwrap();
+        user.with_active_proposal = false;
+        self.users.insert(&user.id.to_string(), &user);
         
         return proposal
+    }
+
+    pub fn get_contributions(self) -> Vec<Contribution> {
+        self.contributions
+    }
+
+    pub fn get_payments(self) -> Vec<Payment> {
+        self.payments
     }
     
 }
