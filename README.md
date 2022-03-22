@@ -1,8 +1,9 @@
 Rust-4MyFuture
 ==================
 
-Rust Contract of 4MyFutureDApp the repository here https://github.com/NEAR-Hispano/4myFuture
-Here you'll find the optimized contract version.
+Rust Contract of 4MyFutureDApp the repository here https://github.com/NEAR-Hispano/4myFuture.
+Contract deployed on NEAR Protocol Blockchain
+4MyFuture is a crowdfunding application made for fund and help students.
 
 
 Quick Start
