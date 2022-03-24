@@ -14,6 +14,7 @@ const NANOSEC_SEC: u64 = 1000000000;
 const NANOSEC_MIN: u64 = 60000000000;
 const NANOSEC_HOR: u64 = 3600000000000;
 const NANOSEC_DIA: u64 = 86400000000000;
+//const PLATFORM_FEE: u128 = 10/1000; //1% fee per transaction
 
 
 //--------------------------------- APP OBJECTS --------------------------//
@@ -139,6 +140,7 @@ impl ForMyFuture {
         user.unwrap()
     }
 
+    //Get user contributions
     pub fn get_user_contributions(self, user_id: AccountId) -> Vec<Contribution> {
         assert!(self.users.get(&user_id).is_some(), "User not registered");
         return self.users.get(&user_id).unwrap().contributions;
@@ -242,19 +244,20 @@ impl ForMyFuture {
             env::log(b"USUARIO NO REGISTRADO");
             let _user_just_registered = self.login();
         }
+        let contribution_deposit = env::attached_deposit();    
         let mut user = self.users.get(&env::signer_account_id()).unwrap();
         let index = self.contributions.len() as i128;
         let contribution = Contribution {
             contribution_id: index,
             proposal_id: proposal.index,
-            amount: env::attached_deposit(),
+            amount: contribution_deposit,
             by: env::signer_account_id(),
             to: proposal.clone().user,
             date: env::block_timestamp(),
             comments: comments 
         };
         self.contributions.push(contribution.clone());
-        proposal.funds += env::attached_deposit();
+        proposal.funds += contribution_deposit;
         let new_percentage = (proposal.funds*100)/proposal.amount_needed;
         if new_percentage >= 75 {
             proposal.is_reclaimable = true;
@@ -269,11 +272,9 @@ impl ForMyFuture {
         assert!(proposal_id <= i128::from(self.proposals.len() + 1), "Invalid proposal id");
         let mut proposal = self.proposals.get(&proposal_id).unwrap();
         assert!(env::signer_account_id() == proposal.user, "Only owner can reclaim funds");
-        assert!(proposal.status == 0, "Can't reclaim funds for this proposal");    
-        //let percentage = &self.get_proposal_funds_percentage(proposal_id);     
+        assert!(proposal.status == 0, "Can't reclaim funds for this proposal");  
         let percentage = (proposal.funds*100)/proposal.amount_needed;
         assert!(percentage > 75, "You can't reclaim your funds yet");
-        //assert in finish time
         let owner_id = &proposal.user;
         let mut owner = self.users.get(&owner_id).unwrap();
         Promise::new(owner_id.clone()).transfer(proposal.funds);
