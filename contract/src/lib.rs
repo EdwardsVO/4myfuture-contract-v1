@@ -161,7 +161,7 @@ impl ForMyFuture {
         pics: Vec<String>,
         amount_needed: u128,
         description: String, 
-        //finish_date: u64 //TESTING REFUND
+        finish_date: u64 
     ) -> Proposal {
             let user_requesting = env::signer_account_id().to_string();
             let user = self.users.get(&user_requesting);
@@ -182,7 +182,7 @@ impl ForMyFuture {
                 amount_needed: amount_yocto,
                 description: description,
                 init_date: env::block_timestamp(),
-                finish_date: env::block_timestamp() + NANOSEC_MIN, //TESTING REFUND
+                finish_date: finish_date,
                 funds: 0,
                 index: index, 
                 is_reclaimable: false
